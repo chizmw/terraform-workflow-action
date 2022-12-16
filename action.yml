@@ -91,7 +91,7 @@ inputs:
   # and still benefit from the rest of the action
   state-bucket:
     description: Name of the state bucket
-    required: true
+    required: false
     default: 436158765452-terraform-state
 
   state-key:
