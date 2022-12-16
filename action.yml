@@ -46,9 +46,10 @@ inputs:
   aws-account-name-prefix:
     description: AWS Account Name Prefix
     required: true
-  aws-account-alias:
-    description: AWS Account Alias / Suffix
+  aws-session-tag:
+    description: AWS Session Identifier
     required: true
+    default: terraform-action
 
   # these are required for configuring the AWS credentials
   aws-access-key-id:
@@ -114,7 +115,7 @@ runs:
         if [ -z "${{ inputs.aws-account-name-prefix }}" ]; then
           echo "aws-account-name-prefix is empty"; error=true;
         fi
-        if [ -z "${{ inputs.aws-account-alias }}" ]; then
+        if [ -z "${{ inputs.aws-session-tag }}" ]; then
           echo "aws-account-alias is empty"; error=true;
         fi
         if [ -z "${{ inputs.aws-access-key-id }}" ]; then
@@ -160,7 +161,7 @@ runs:
         aws-region: ${{ inputs.aws-region }}
         role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/${{ inputs.aws-deployment-role }}
         role-duration-seconds: ${{ inputs.role-duration-seconds }}
-        role-session-name: workflow-${{ inputs.aws-account-name-prefix }}-${{ inputs.aws-account-alias }}-aws-assume-role-session
+        role-session-name: workflow-${{ inputs.aws-account-name-prefix }}-${{ inputs.aws-session-tag }}-aws-assume-role-session
         role-skip-session-tagging: ${{ inputs.role-skip-session-tagging }}
         # yamllint enable rule:line-length
 
