@@ -1,0 +1,608 @@
+---
+name: Terraform Actions
+description: Setup, lint, validate, plan and apply Terraform
+
+inputs:
+  # we default to terraform as that's the most common use case
+  # but allow slightly stranger people/workflows to use something else
+  terraform-dir:
+    description: Terraform directory
+    required: false
+    default: terraform
+
+  # we will auto-apply on PR push/merge to 'default branch'
+  # in some cases we want to force an apply in a branch
+  # (e.g. SCP's terraform test env)
+  auto-apply:
+    description: Auto-apply terraform in the job
+    required: false
+    default: 'false'
+
+  # we want to use workspaces by default
+  # but older terraform as zoopla didn't use them
+  # which we might encounter if we're using this action
+  # combined with (legacy) state bucket and key
+  use-workspaces:
+    description: Use terraform workspaces
+    required: false
+    default: 'false'
+
+  # DANGER! ONLY USE THIS IS YOU TRULY KNOW WHAT YOUR TERRFORM IS DOING!!
+  # this will allow terraform to destroy resources
+  # this is useful for testing terraform destroy in test scenarios
+  # but should never be used in production
+  # this is intentionally undocumented in the README
+  # it's initial, and hopefully sole, use case is for SCP's terraform test env
+  # this is a boolean, but we use a string to allow for the 'false' default
+  auto-destroy:
+    description: Auto-apply terraform destroy in the job
+    required: false
+    default: 'false'
+
+  # these are the values we require to set shared environment variables
+  aws-account-id:
+    description: AWS Account ID
+    required: true
+  aws-account-name-prefix:
+    description: AWS Account Name Prefix
+    required: true
+  aws-account-alias:
+    description: AWS Account Alias / Suffix
+    required: true
+
+  # these are required for configuring the AWS credentials
+  aws-access-key-id:
+    description: AWS Access Key ID
+    required: true
+  aws-secret-access-key:
+    description: AWS Secret Access Key
+    required: true
+  aws-deployment-role:
+    description: AWS Deployment Role
+    required: true
+  role-duration-seconds:
+    description: Role duration in seconds
+    required: false
+    default: '3600'
+  role-skip-session-tagging:
+    description: Skip session tagging
+    required: false
+    default: 'true'
+  aws-region:
+    description: AWS Region
+    required: false
+    default: eu-west-1
+
+  # these are required to post/update PR comments
+  github-token:
+    description: GitHub Secret Token (secrets.GITHUB_TOKEN)
+    required: true
+
+  # optionally pass job-name to distinguinsh between multiple jobs running under
+  # the same action in a strategy:matrix
+  job-name:
+    description: Job Name
+    required: false
+    default: ''
+
+  # we allow the user to pass in the name of the bucket and key to use
+  # this allows the user to use a bucket and key that already exists
+  # and still benefit from the rest of the action
+  state-bucket:
+    description: Name of the state bucket
+    required: true
+    default: 436158765452-terraform-state
+
+  state-key:
+    description: Name of the state key
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Validate action inputs
+      shell: bash
+      # yamllint disable rule:line-length
+      run: |
+        # check for missing input values
+        if [ -z "${{ inputs.terraform-dir }}" ]; then
+          echo "terraform-dir is empty"; error=true;
+        fi
+        if [ -z "${{ inputs.aws-account-id }}" ]; then
+          echo "aws-account-id is empty"; error=true;
+        fi
+        if [ -z "${{ inputs.aws-account-name-prefix }}" ]; then
+          echo "aws-account-name-prefix is empty"; error=true;
+        fi
+        if [ -z "${{ inputs.aws-account-alias }}" ]; then
+          echo "aws-account-alias is empty"; error=true;
+        fi
+        if [ -z "${{ inputs.aws-access-key-id }}" ]; then
+          echo "aws-access-key-id is empty"; error=true;
+        fi
+        if [ -z "${{ inputs.aws-secret-access-key }}" ]; then
+          echo "aws-secret-access-key is empty"; error=true;
+        fi
+        if [ -z "${{ inputs.aws-deployment-role }}" ]; then
+          echo "aws-deployment-role is empty"; error=true;
+        fi
+        if [ -z "${{ inputs.role-duration-seconds }}" ]; then
+          echo "role-duration-seconds is empty"; error=true;
+        fi
+        if [ -z "${{ inputs.role-skip-session-tagging }}" ]; then
+          echo "role-skip-session-tagging is empty"; error=true;
+        fi
+
+        if [ -n "${error}" ]; then
+          echo "One or more inputs are invalid"
+          exit 1
+        fi
+      # yamllint enable rule:line-length
+
+    - uses: hashicorp/setup-terraform@v2
+      name: Setup terraform
+      with:
+        terraform_wrapper: true
+
+    - name: Set Shared Environment Variables
+      shell: bash
+      # yamllint disable rule:line-length
+      run: |
+        echo TF_CLI_ARGS_init=-backend-config='encrypt=true' -backend-config='key=${{inputs.state-key}}' -backend-config='bucket=${{inputs.state-bucket}}' >> $GITHUB_ENV
+      # yamllint enable rule:line-length
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1-node16
+      with:
+        # yamllint disable rule:line-length
+        aws-access-key-id: ${{ inputs.aws-access-key-id }}
+        aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
+        aws-region: ${{ inputs.aws-region }}
+        role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/${{ inputs.aws-deployment-role }}
+        role-duration-seconds: ${{ inputs.role-duration-seconds }}
+        role-session-name: workflow-${{ inputs.aws-account-name-prefix }}-${{ inputs.aws-account-alias }}-aws-assume-role-session
+        role-skip-session-tagging: ${{ inputs.role-skip-session-tagging }}
+        # yamllint enable rule:line-length
+
+    # there have been some issues with using a defaults:run level working
+    # directory; since this is a composite action it's not quite as horrific to
+    # have the value set in individual steps
+
+    # now for the terraform parts!
+    - uses: terraform-linters/setup-tflint@v2
+      name: Setup tflint
+      with:
+        # while creating this action we want as few changes and complications as
+        # possible; once it's happily running we should definitely start using
+        # the newer linter (which will break some things because it's stricter)
+        # tflint_version: v0.41.0
+        tflint_version: v0.39.3
+
+    - name: Show tflint version
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      run: tflint --version
+
+    - name: Initialise tflint
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      run: tflint --init
+
+    - name: Run tflint
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      id: tflint
+      run: |
+        pwd
+        tflint -f compact .
+      continue-on-error: true
+
+    ### FORMAT
+    - name: Run terraform fmt
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      id: fmt
+      run: terraform fmt -check -diff
+      continue-on-error: true
+
+    - name: Format Details (stdout)
+      shell: bash
+      if: steps.fmt.outputs.exitcode == 0
+      working-directory: ${{ inputs.terraform-dir }}
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOformat' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:information_source: stdout from <code>terraform format</code></summary>
+
+        ```tf
+        ${{ steps.fmt.outputs.stdout }}
+        ```
+
+        </details>
+        EOformat
+      # yamllint enable rule:line-length
+
+    - name: Format Details (stderr)
+      shell: bash
+      if: steps.fmt.outputs.exitcode != 0
+      working-directory: ${{ inputs.terraform-dir }}
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOformat' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:warning: stderr from <code>terraform format</code></summary>
+
+        ```tf
+        ${{ steps.fmt.outputs.stderr }}
+        ```
+
+        </details>
+        EOformat
+      # yamllint enable rule:line-length
+
+    ### INIT
+    - name: Run terraform init
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      # so we can add to the summary
+      continue-on-error: true
+      id: init
+      # yamllint disable rule:line-length
+      run: |
+        aws sts get-caller-identity
+        terraform init -no-color
+        # only select workspace if the input option is set
+        if [ "${{ inputs.use-workspace }}" == 'true' ]; then
+          terraform workspace select ${{ inputs.aws-account-id }} || terraform workspace new ${{ inputs.aws-account-id }}
+          terraform init -no-color
+        fi
+      # yamllint enable rule:line-length
+
+    - name: Init Details (stdout)
+      shell: bash
+      if: steps.init.outputs.exitcode == 0
+      working-directory: ${{ inputs.terraform-dir }}
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOinit' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:information_source: stdout from <code>terraform init</code></summary>
+
+        ```tf
+        ${{ steps.init.outputs.stdout }}
+        ```
+
+        </details>
+        EOinit
+      # yamllint enable rule:line-length
+
+    - name: Init Details (stderr)
+      shell: bash
+      if: steps.init.outputs.exitcode != 0
+      working-directory: ${{ inputs.terraform-dir }}
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOinit' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:warning: stderr from <code>terraform init</code></summary>
+
+        ```tf
+        ${{ steps.init.outputs.stderr }}
+        ```
+
+        </details>
+        EOinit
+
+        exit 98
+      # yamllint enable rule:line-length
+
+    ### VALIDATE
+    - name: Run terraform validate
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      id: validate
+      run: terraform validate -no-color
+
+    - name: Validate Details (stdout)
+      shell: bash
+      if: steps.validate.outputs.exitcode == 0
+      working-directory: ${{ inputs.terraform-dir }}
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOvalidate' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:information_source: stdout from <code>terraform validate</code></summary>
+
+        ```tf
+        ${{ steps.validate.outputs.stdout }}
+        ```
+
+        </details>
+        EOvalidate
+      # yamllint enable rule:line-length
+
+    - name: Validate Details (stderr)
+      shell: bash
+      if: always() && steps.validate.outputs.exitcode != 0
+      working-directory: ${{ inputs.terraform-dir }}
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOvalidate' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:warning: stderr from <code>terraform validate</code></summary>
+
+        ```tf
+        ${{ steps.validate.outputs.stderr }}
+        ```
+
+        </details>
+        EOvalidate
+
+        exit 99
+      # yamllint enable rule:line-length
+
+    ### PLAN
+    - name: Run terraform plan
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      id: plan
+      # yamllint disable rule:line-length
+      run: |
+        terraform plan -no-color -out=account-${{ inputs.aws-account-id }}.tfplan.out 2>&1 |tee plan.out
+      # yamllint enable rule:line-length
+      continue-on-error: false
+
+    - name: Plan Details (stdout)
+      shell: bash
+      if: steps.plan.outputs.exitcode == 0
+      working-directory: ${{ inputs.terraform-dir }}
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOplan' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:information_source: stdout from <code>terraform plan</code></summary>
+
+        ```tf
+        ${{ steps.plan.outputs.stdout }}
+        ```
+
+        </details>
+        EOplan
+      # yamllint enable rule:line-length
+
+    - name: Plan Details (stderr)
+      shell: bash
+      if: always() && steps.plan.outputs.exitcode != 0
+      working-directory: ${{ inputs.terraform-dir }}
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOplan' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:warning: stderr from <code>terraform plan</code></summary>
+
+        ```tf
+        ${{ steps.plan.outputs.stderr }}
+        ```
+
+        </details>
+        EOplan
+      # yamllint enable rule:line-length
+
+    ### APPLY
+    - name: terraform apply
+      continue-on-error: true
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      id: apply
+      # yamllint disable rule:line-length
+      if: |
+        inputs.auto-apply == 'true' ||
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name == 'push'
+      run: |
+        terraform apply -no-color -auto-approve account-${{ inputs.aws-account-id }}.tfplan.out 2>&1 |tee apply.out
+      # yamllint enable rule:line-length
+
+    - name: Apply Details (stdout)
+      shell: bash
+      if: steps.apply.outputs.exitcode == 0
+      working-directory: ${{ inputs.terraform-dir }}
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOapply' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:information_source: stdout from <code>terraform apply</code></summary>
+
+        ```tf
+        ${{ steps.apply.outputs.stdout }}
+        ```
+
+        </details>
+        EOapply
+      # yamllint enable rule:line-length
+
+    - name: Apply Details (stderr)
+      shell: bash
+      if: always() && steps.apply.outputs.exitcode != 0
+      working-directory: ${{ inputs.terraform-dir }}
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOapply' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:warning: stderr from <code>terraform apply</code></summary>
+
+        ```tf
+        ${{ steps.apply.outputs.stderr }}
+        ```
+
+        </details>
+        EOapply
+      # yamllint enable rule:line-length
+
+    ### DESTROY
+    # useful for tearing down test infra
+    # use with caution!
+    - name: terraform destroy
+      continue-on-error: true
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      id: destroy
+      # yamllint disable rule:line-length
+      # even if set to true, we NEVER auto-destroy on the default branch
+      if: |
+        inputs.auto-destroy == 'true' &&
+        github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+      run: |
+        # add -auto-approve once we've seen the plan
+        terraform destroy -no-color -auto-approve
+      # yamllint enable rule:line-length
+
+    - name: Destroy Details (stdout)
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      if: |
+        inputs.auto-destroy == 'true'
+        && steps.destroy.outputs.exitcode == 0
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOdestroy' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:information_source: stdout from <code>terraform destroy</code></summary>
+
+        ```tf
+        ${{ steps.destroy.outputs.stdout }}
+        ```
+
+        </details>
+        EOdestroy
+      # yamllint enable rule:line-length
+
+    - name: Destroy Details (stderr)
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      if: |
+        always()
+        && inputs.auto-destroy == 'true'
+        && steps.destroy.outputs.exitcode != 0
+      # yamllint disable rule:line-length
+      run: |
+        cat <<'EOdestroy' >>$GITHUB_STEP_SUMMARY
+        <details><summary>:warning: stderr from </code>terraform destroy<code></summary>
+
+        ```tf
+        ${{ steps.destroy.outputs.stderr }}
+        ```
+
+        </details>
+        EOdestroy
+      # yamllint disable rule:line-length
+
+    ### COMMENT
+    - name: Update PR Comment
+      uses: actions/github-script@v6
+      if: always() && github.event_name == 'pull_request'
+      with:
+        github-token: ${{ inputs.github-token }}
+        # yamllint disable rule:line-length
+        script: |
+          // 1. Retrieve existing bot comments for the PR
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          })
+          var commentHeader
+          if ("${{ inputs.job-name }}" != "") {
+            // a comment header including the job-name
+            commentHeader = '${{ github.workflow }}: results for ${{ inputs.aws-account-name-prefix }} ${{ inputs.aws-account-alias }} (${{ inputs.aws-account-id }}) [${{ inputs.job-name }}]'
+          } else {
+            // a comment header excluding the job-name
+            commentHeader = '${{ github.workflow }}: results for ${{ inputs.aws-account-name-prefix }} ${{ inputs.aws-account-alias }} (${{ inputs.aws-account-id }})'
+          }
+          const botComment = comments.find(comment => {
+            return comment.user.type === 'Bot' && comment.body.includes(commentHeader)
+          })
+
+          // 2. Prepare format of the comment
+          const statusIcon = {
+            'success': '&#9989;',
+            'failure': '&#10060;',
+            'skipped': '&#8709;',
+          };
+
+          const doOpenStderr = {
+            'lint':     ('${{steps.lint.outcome}}'      == 'failure' ? 'open' : ''),
+            'fmt':      ('${{steps.fmt.outcome}}'       == 'failure' ? 'open' : ''),
+            'init':     ('${{steps.init.outcome}}'      == 'failure' ? 'open' : ''),
+            'validate': ('${{steps.validate.outcome}}'  == 'failure' ? 'open' : ''),
+            'plan':     ('${{steps.plan.outcome}}'      == 'failure' ? 'open' : ''),
+            'apply':    ('${{steps.apply.outcome}}'     == 'failure' ? 'open' : ''),
+            'destroy':  ('${{steps.apply.outcome}}'     == 'failure' ? 'open' : ''),
+          };
+
+          const doOpenStdout = {
+            'lint':     ('${{steps.lint.outcome}}'      == 'success' ? 'open' : ''),
+            'fmt':      ('${{steps.fmt.outcome}}'       == 'success' ? 'open' : ''),
+            'init':     ('${{steps.init.outcome}}'      == 'success' ? 'open' : ''),
+            'validate': ('${{steps.validate.outcome}}'  == 'success' ? 'open' : ''),
+            'plan':     ('${{steps.plan.outcome}}'      == 'success' ? 'open' : ''),
+            'apply':    ('${{steps.apply.outcome}}'     == 'success' ? 'open' : ''),
+            'destroy':  ('${{steps.apply.outcome}}'     == 'success' ? 'open' : ''),
+          };
+
+          const timestamp=String(new Date(Date.now()))
+
+          const output = `### ${commentHeader}
+
+          | Check    | Result | Icon |
+          | ----     | ---- | ---- |
+          | lint     | \`${{ steps.tflint.outcome }}\`   | ${statusIcon['${{ steps.tflint.outcome }}']}   |
+          | fmt      | \`${{ steps.fmt.outcome }}\`      | ${statusIcon['${{ steps.fmt.outcome }}']}      |
+          | init     | \`${{ steps.init.outcome }}\`     | ${statusIcon['${{ steps.init.outcome }}']}     |
+          | validate | \`${{ steps.validate.outcome }}\` | ${statusIcon['${{ steps.validate.outcome }}']} |
+          | plan     | \`${{ steps.plan.outcome }}\`     | ${statusIcon['${{ steps.plan.outcome }}']}     |
+          | apply    | \`${{ steps.apply.outcome }}\`    | ${statusIcon['${{ steps.apply.outcome }}']}    |
+          | destroy  | \`${{ steps.apply.outcome }}\`    | ${statusIcon['${{ steps.apply.outcome }}']}    |
+
+          More details may be found in the [action run](${{ github.server_url}}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          | Name     | Value                        |
+          | ----     | ----                         |
+          | Pusher   | @${{ github.actor }}         |
+          | Action   | \`${{ github.event_name }}\` |
+          | Workflow | \`${{ github.workflow }}\`   |
+
+          <sup>Generated for ${{github.sha}} at ${timestamp}</sup>
+          `;
+
+
+          // 3. If we have a comment, update it, otherwise create a new one
+          if (botComment) {
+            github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body: output
+            })
+          } else {
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+          }
+
+        # yamllint enable rule:line-length
+
+    ### FAILURE
+    # this is a bit clunkier that we'd like, but it seems failure() only
+    # considers the previous step
+    # steps.<id>.outcome seems to be the only way to scan everything we did
+    # https://docs.github.com/en/actions/learn-github-actions/contexts#steps-context
+    - name: Failure
+      shell: bash
+      if: |
+        always() && (
+          steps.lint.outcome == 'failure' ||
+          steps.fmt.outcome == 'failure' ||
+          steps.init.outcome == 'failure' ||
+          steps.validate.outcome == 'failure' ||
+          steps.plan.outcome == 'failure' ||
+          steps.apply.outcome == 'failure' ||
+          steps.destroy.outcome == 'failure'
+        )
+      run: |
+        echo "One or more steps failed"
+        echo "### :boom: FAILURE" >> $GITHUB_STEP_SUMMARY
+        echo "One or more steps failed for this task" >> $GITHUB_STEP_SUMMARY
+        exit 65
