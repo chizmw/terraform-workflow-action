@@ -27,6 +27,13 @@ inputs:
     required: false
     default: 'false'
 
+  # the workspace to use
+  # this is only used if use-workspaces is true
+  # if use-workspaces is false, this is ignored
+  workspace:
+    description: Terraform workspace
+    required: false
+
   # DANGER! ONLY USE THIS IS YOU TRULY KNOW WHAT YOUR TERRFORM IS DOING!!
   # this will allow terraform to destroy resources
   # this is useful for testing terraform destroy in test scenarios
@@ -107,31 +114,37 @@ runs:
       run: |
         # check for missing input values
         if [ -z "${{ inputs.terraform-dir }}" ]; then
-          echo "terraform-dir is empty"; error=true;
+          echo "::error::terraform-dir is empty"; error=true;
         fi
         if [ -z "${{ inputs.aws-account-id }}" ]; then
-          echo "aws-account-id is empty"; error=true;
+          echo "::error::aws-account-id is empty"; error=true;
         fi
         if [ -z "${{ inputs.aws-account-name-prefix }}" ]; then
-          echo "aws-account-name-prefix is empty"; error=true;
+          echo "::error::aws-account-name-prefix is empty"; error=true;
         fi
         if [ -z "${{ inputs.aws-session-tag }}" ]; then
-          echo "aws-account-alias is empty"; error=true;
+          echo "::error::aws-account-alias is empty"; error=true;
         fi
         if [ -z "${{ inputs.aws-access-key-id }}" ]; then
-          echo "aws-access-key-id is empty"; error=true;
+          echo "::error::aws-access-key-id is empty"; error=true;
         fi
         if [ -z "${{ inputs.aws-secret-access-key }}" ]; then
-          echo "aws-secret-access-key is empty"; error=true;
+          echo "::error::aws-secret-access-key is empty"; error=true;
         fi
         if [ -z "${{ inputs.aws-deployment-role }}" ]; then
-          echo "aws-deployment-role is empty"; error=true;
+          echo "::error::aws-deployment-role is empty"; error=true;
         fi
         if [ -z "${{ inputs.role-duration-seconds }}" ]; then
-          echo "role-duration-seconds is empty"; error=true;
+        echo "::error::role-duration-seconds is empty"; error=true;
         fi
         if [ -z "${{ inputs.role-skip-session-tagging }}" ]; then
-          echo "role-skip-session-tagging is empty"; error=true;
+        echo "::error::role-skip-session-tagging is empty"; error=true;
+        fi
+
+        # check to see if use-workspaces is true, but without a workspace value
+        if [ -n "${{ inputs.use-workspaces }}" ]; then
+          if [ -z "${{ inputs.workspace }}" ]; then
+          echo "::error::workspace is empty but use-workspaces is true"; error=true;
         fi
 
         if [ -n "${error}" ]; then
@@ -253,7 +266,7 @@ runs:
         terraform init -no-color
         # only select workspace if the input option is set
         if [ "${{ inputs.use-workspace }}" == 'true' ]; then
-          terraform workspace select ${{ inputs.aws-account-id }} || terraform workspace new ${{ inputs.aws-account-id }}
+          terraform workspace select ${{ inputs.workspace }} || terraform workspace new ${{ inputs.workspace }}
           terraform init -no-color
         fi
       # yamllint enable rule:line-length
