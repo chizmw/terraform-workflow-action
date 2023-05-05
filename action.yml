@@ -144,7 +144,8 @@ runs:
         # check to see if use-workspaces is true, but without a workspace value
         if [ -n "${{ inputs.use-workspaces }}" ]; then
           if [ -z "${{ inputs.workspace }}" ]; then
-          echo "::error::workspace is empty but use-workspaces is true"; error=true;
+            echo "::error::workspace is empty but use-workspaces is true"; error=true;
+          fi
         fi
 
         if [ -n "${error}" ]; then
