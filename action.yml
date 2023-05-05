@@ -266,7 +266,7 @@ runs:
         aws sts get-caller-identity
         terraform init -no-color
         # only select workspace if the input option is set
-        if [ "${{ inputs.use-workspace }}" == 'true' ]; then
+        if [ "${{ inputs.use-workspaces }}" == 'true' ]; then
           terraform workspace select ${{ inputs.workspace }} || terraform workspace new ${{ inputs.workspace }}
           terraform init -no-color
         fi
