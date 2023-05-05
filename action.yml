@@ -101,9 +101,10 @@ inputs:
     required: false
     default: 436158765452-terraform-state
 
+  # we'll allow custom state keys, but default to repo-account-tag
   state-key:
     description: Name of the state key
-    required: true
+    required: false
 
 runs:
   using: composite
@@ -163,7 +164,16 @@ runs:
       shell: bash
       # yamllint disable rule:line-length
       run: |
-        echo TF_CLI_ARGS_init=-backend-config='encrypt=true' -backend-config='key=${{inputs.state-key}}' -backend-config='bucket=${{inputs.state-bucket}}' >> $GITHUB_ENV
+        KEY=${{inputs.state-key}}
+        # if the KEY is empty, set it to the repo-account-tag
+        if [ -z "${KEY}" ]; then
+          KEY="${{ github.repository }}-${{ matrix.aws-account-id }}-${{ matrix.session-tag }}.tfstate"
+        fi
+        # set the env
+        echo TF_CLI_ARGS_init=-backend-config='encrypt=true' -backend-config='key=${KEY}' -backend-config='bucket=${{inputs.state-bucket}}' >> $GITHUB_ENV
+        # share in the pipeline summary
+        echo "::notice::TF_CLI_ARGS_init=-backend-config='encrypt=true' -backend-config='key=${KEY}' -backend-config='bucket=${{inputs.state-bucket}}'"
+
       # yamllint enable rule:line-length
 
     - name: Configure AWS credentials
@@ -270,6 +280,8 @@ runs:
           terraform workspace select ${{ inputs.workspace }} || terraform workspace new ${{ inputs.workspace }}
           terraform init -no-color
         fi
+        terraform workspace list
+        terraform refresh
       # yamllint enable rule:line-length
 
     - name: Init Details (stdout)
