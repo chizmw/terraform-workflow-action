@@ -278,11 +278,10 @@ runs:
         terraform init -no-color
         # only select workspace if the input option is set
         if [ "${{ inputs.use-workspaces }}" == 'true' ]; then
-          terraform workspace select ${{ inputs.workspace }} || terraform workspace new ${{ inputs.workspace }}
+          terraform workspace select -or-create=true ${{ inputs.workspace }}
           terraform init -no-color
         fi
         terraform workspace list
-        terraform refresh
       # yamllint enable rule:line-length
 
     - name: Init Details (stdout)
