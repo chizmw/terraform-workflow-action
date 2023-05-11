@@ -177,7 +177,7 @@ runs:
       # yamllint enable rule:line-length
 
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1-node16
+      uses: aws-actions/configure-aws-credentials@v2
       with:
         # yamllint disable rule:line-length
         aws-access-key-id: ${{ inputs.aws-access-key-id }}
@@ -187,6 +187,7 @@ runs:
         role-duration-seconds: ${{ inputs.role-duration-seconds }}
         role-session-name: workflow-${{ inputs.aws-account-name-prefix }}-${{ inputs.aws-session-tag }}-aws-assume-role-session
         role-skip-session-tagging: ${{ inputs.role-skip-session-tagging }}
+        mask-aws-account-id: false
         # yamllint enable rule:line-length
 
     # there have been some issues with using a defaults:run level working
