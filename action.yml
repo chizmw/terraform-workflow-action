@@ -176,6 +176,11 @@ runs:
 
       # yamllint enable rule:line-length
 
+    - name: Debug Environment
+      shell: bash
+      run: |
+        env |grep AWS_ | sort
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
