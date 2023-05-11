@@ -172,7 +172,7 @@ runs:
         # set the env
         echo TF_CLI_ARGS_init=-backend-config='encrypt=true' -backend-config='key=${KEY}' -backend-config='bucket=${{inputs.state-bucket}}' >> $GITHUB_ENV
         # share in the pipeline summary
-        echo "::notice::TF_CLI_ARGS_init=-backend-config='encrypt=true' -backend-config='key=${KEY}' -backend-config='bucket=${{inputs.state-bucket}}'"
+        echo "::notice::TF_CLI_ARGS_init=\"-backend-config='encrypt=true' -backend-config='key=${KEY}' -backend-config='bucket=${{inputs.state-bucket}}'"\""
 
       # yamllint enable rule:line-length
 
@@ -283,6 +283,15 @@ runs:
         fi
         terraform workspace list
       # yamllint enable rule:line-length
+
+    - name: Terraform State
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      run: |
+        echo "::group::terraform state"
+        terraform state list
+        terraform state pull
+        echo "::endgroup::"
 
     - name: Init Details (stdout)
       shell: bash
