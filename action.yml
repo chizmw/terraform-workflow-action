@@ -173,6 +173,11 @@ runs:
         echo TF_CLI_ARGS_init=-backend-config='encrypt=true' -backend-config='key=${KEY}' -backend-config='bucket=${{inputs.state-bucket}}' >> $GITHUB_ENV
         # share in the pipeline summary
         echo "::notice::TF_CLI_ARGS_init=\"-backend-config='encrypt=true' -backend-config='key=${KEY}' -backend-config='bucket=${{inputs.state-bucket}}'"\"
+        # set the (default) region
+        if [ -n "${{ inputs.aws-region }}" ]; then
+          echo AWS_DEFAULT_REGION=${{ inputs.aws-region }} >> $GITHUB_ENV
+          echo "::notice::AWS_DEFAULT_REGION=${{ inputs.aws-region }}"
+        fi
 
       # yamllint enable rule:line-length
 
