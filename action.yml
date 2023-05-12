@@ -170,9 +170,11 @@ runs:
           KEY="${{ github.repository }}-${{ matrix.aws-account-id }}-${{ matrix.session-tag }}.tfstate"
         fi
         # set the env
-        echo TF_CLI_ARGS_init=-backend-config='encrypt=true' -backend-config='key=${KEY}' -backend-config='bucket=${{inputs.state-bucket}}' >> $GITHUB_ENV
+        echo TF_CLI_ARGS_init=-backend-config="encrypt=true" -backend-config="key=${KEY}" -backend-config="bucket=${{inputs.state-bucket}}" >> $GITHUB_ENV
         # share in the pipeline summary
-        echo "::notice::TF_CLI_ARGS_init=\"-backend-config='encrypt=true' -backend-config='key=${KEY}' -backend-config='bucket=${{inputs.state-bucket}}'"\"
+        echo -n "::notice::"
+        grep TF_CLI_ARGS_init $GITHUB_ENV
+        #echo "::notice::TF_CLI_ARGS_init=\"-backend-config='encrypt=true' -backend-config='key=${KEY}' -backend-config='bucket=${{inputs.state-bucket}}'"\"
         # set the (default) region
         if [ -n "${{ inputs.aws-region }}" ]; then
           echo AWS_DEFAULT_REGION=${{ inputs.aws-region }} >> $GITHUB_ENV
