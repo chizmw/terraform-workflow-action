@@ -194,6 +194,14 @@ runs:
         role-skip-session-tagging: ${{ inputs.role-skip-session-tagging }}
         mask-aws-account-id: false
         # yamllint enable rule:line-length
+        #
+    - name: State of the state
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      run: |
+        cat $GITHUB_ENV
+        aws s3 ls s3://436158765452-terraform-state/env:/dev/
+        aws s3 ls s3://436158765452-terraform-state/env:/dev/chizmw/
 
     # there have been some issues with using a defaults:run level working
     # directory; since this is a composite action it's not quite as horrific to
