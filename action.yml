@@ -106,6 +106,10 @@ inputs:
     description: Name of the state key
     required: false
 
+  terraform-state-action:
+    decsription: Run 'init' with 'migrate-state' or 'reconfigure'
+    required: false
+
 runs:
   using: composite
   steps:
@@ -279,6 +283,19 @@ runs:
         </details>
         EOformat
       # yamllint enable rule:line-length
+
+    ### MIGRATE STATE
+    - name: terraform init (state update)
+      shell: bash
+      working-directory: ${{ inputs.terraform-dir }}
+      if: inputs.terraform-state-action == 'migrate-state' || inputs.terraform-state-action == 'reconfigure'
+      run:
+        terraform init -no-color -${{ inputs.terraform-state-action }}
+        # only select workspace if the input option is set
+        if [ "${{ inputs.use-workspaces }}" == 'true' ]; then
+          terraform workspace select -or-create=true ${{ inputs.workspace }}
+          terraform init -no-color -${{ inputs.terraform-state-action }}
+        fi
 
     ### INIT
     - name: Run terraform init
