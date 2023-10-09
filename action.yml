@@ -290,12 +290,13 @@ runs:
       working-directory: ${{ inputs.terraform-dir }}
       if: inputs.terraform-state-action == 'migrate-state' || inputs.terraform-state-action == 'reconfigure'
       run:
-        terraform init -no-color -${{ inputs.terraform-state-action }}
-        # only select workspace if the input option is set
-        if [ "${{ inputs.use-workspaces }}" == 'true' ]; then
-          terraform workspace select -or-create=true ${{ inputs.workspace }}
-          terraform init -no-color -${{ inputs.terraform-state-action }}
-        fi
+        echo "will call: terraform init -${{ inputs.terraform-state-action }}"
+        #terraform init -no-color -${{ inputs.terraform-state-action }}
+        ## only select workspace if the input option is set
+        #if [ "${{ inputs.use-workspaces }}" == 'true' ]; then
+        #  terraform workspace select -or-create=true ${{ inputs.workspace }}
+        #  terraform init -no-color -${{ inputs.terraform-state-action }}
+        #fi
 
     ### INIT
     - name: Run terraform init
