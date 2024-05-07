@@ -107,7 +107,7 @@ inputs:
     required: false
 
   terraform-state-action:
-    decsription: Run 'init' with 'migrate-state' or 'reconfigure'
+    description: Run 'init' with 'migrate-state' or 'reconfigure'
     required: false
 
 runs:
