@@ -175,9 +175,15 @@ runs:
         fi
         # set the env
         echo TF_CLI_ARGS_init=-backend-config="encrypt=true" -backend-config="key=${KEY}" -backend-config="bucket=${{inputs.state-bucket}}" >> $GITHUB_ENV
+        # tell users what to set locally for the same args
+        echo "## Set these in your local environment:" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`shell" >> $GITHUB_STEP_SUMMARY
+        echo "TF_CLI_ARGS_init='-backend-config=encrypt=true -backend-config=key=${KEY} -backend-config=bucket=${{inputs.state-bucket}}'" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
         # share in the pipeline summary
-        echo -n "::notice::"
-        grep TF_CLI_ARGS_init $GITHUB_ENV
+        #echo -n "::notice::"
+        #grep TF_CLI_ARGS_init $GITHUB_ENV
         #echo "::notice::TF_CLI_ARGS_init=\"-backend-config='encrypt=true' -backend-config='key=${KEY}' -backend-config='bucket=${{inputs.state-bucket}}'"\"
         # set the (default) region
         if [ -n "${{ inputs.aws-region }}" ]; then
